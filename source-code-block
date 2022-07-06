@@ -1,3 +1,6 @@
+## Config for us_west_2_dev development vpc
+## The VPC itself
+
 resource "aws_vpc" "aws_dev_or1_vpc" {
   cidr_block = var.aws_dev_or1_cidr
   enable_dns_support      = "true"
@@ -8,3 +11,121 @@ resource "aws_vpc" "aws_dev_or1_vpc" {
       "Name" = "aws-dev-or1-vpc"
     },
     local.common_tags,
+  )
+}
+
+resource "aws_subnet" "aws_dev_or1_subnet1" {
+  vpc_id = aws_vpc.aws_dev_or1_vpc.id
+  availability_zone = "us-west-2b"
+  cidr_block = var.aws_dev_or1_subnet1
+  tags = merge(
+    {
+      "Name" = "aws-dev-or1-subnet1"
+    },
+    local.common_tags,
+  )
+}
+
+resource "aws_subnet" "aws_dev_or1_subnet2" {
+  vpc_id = aws_vpc.aws_dev_or1_vpc.id
+  availability_zone = "us-west-2c"
+  cidr_block = var.aws_dev_or1_subnet2
+  tags = merge(
+    {
+      "Name" = "aws-dev-or1-subnet2"
+    },
+    local.common_tags,
+  )
+}
+
+resource "aws_vpc_dhcp_options" "aws_dev_or1_dhcpopts" {
+  domain_name         = local.domain_name
+  domain_name_servers = var.aws_dev_or1_dns_servers
+  ntp_servers         = var.aws_dev_or1_ntp_servers
+  
+  tags = merge(
+    {
+      "Name" = "aws-dev-or1-dhcpopts"
+    },
+    local.common_tags,
+  )
+}
+
+resource "aws_vpc_dhcp_options_association" "aws_dev_or1_dhcpassoc" {
+  vpc_id          = aws_vpc.aws_dev_or1_vpc.id
+  dhcp_options_id = aws_vpc_dhcp_options.aws_dev_or1_dhcpopts.id
+}
+
+## The VPN connection to HE
+
+data "terraform_remote_state" "he" {
+  backend = "s3"
+
+  config = {
+    bucket = "sifive-terraform"
+    key    = "state/aws/main/he.tfstate"
+    region = "us-west-1"
+  }
+}
+
+
+resource "aws_vpn_gateway" "aws_dev_or1_vpg" {
+  vpc_id = aws_vpc.aws_dev_or1_vpc.id
+  amazon_side_asn = var.aws_dev_or1_bgp_asn
+  
+  tags = merge(
+    {
+      "Name" = "aws-dev-or1-vpg"
+    },
+    local.common_tags,
+  )
+}
+
+## Enable an endpoint for accessing S3 without going through VPN later...
+
+## the route table to tie everything together
+
+resource "aws_route_table" "aws_dev_or1_rtb1" {
+  vpc_id = aws_vpc.aws_dev_or1_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_vpn_gateway.aws_dev_or1_vpg.id
+  }
+  
+  tags   = merge(
+    {
+      "Name" = "aws-dev-or1-rtb1"
+    },
+    local.common_tags,
+  )
+}
+
+resource "aws_vpc_endpoint" "aws_dev_or1_s3endpoint_w2" {
+  vpc_id       = aws_vpc.aws_dev_or1_vpc.id
+  service_name = "com.amazonaws.us-west-2.s3"
+}
+
+resource "aws_route_table_association" "aws_dev_or1_sub1_assoc" {
+  route_table_id = aws_route_table.aws_dev_or1_rtb1.id
+  subnet_id = aws_subnet.aws_dev_or1_subnet1.id
+}
+
+resource "aws_route_table_association" "aws_dev_or1_sub2_assoc" {
+  route_table_id = aws_route_table.aws_dev_or1_rtb1.id
+  subnet_id = aws_subnet.aws_dev_or1_subnet2.id
+}
+
+resource "aws_vpn_gateway_route_propagation" "aws_dev_or1_route_propa" {
+  vpn_gateway_id = aws_vpn_gateway.aws_dev_or1_vpg.id
+  route_table_id = aws_route_table.aws_dev_or1_rtb1.id
+}
+
+resource "aws_vpc_endpoint_route_table_association" "aws_dev_or1_s3endp_w2_assoc" {
+  route_table_id  = aws_route_table.aws_dev_or1_rtb1.id
+  vpc_endpoint_id = aws_vpc_endpoint.aws_dev_or1_s3endpoint_w2.id
+}
+
+#module "aws_dev_or1_sg" {
+#    source = "./modules/sgs"
+#    vpc_id = aws_vpc.aws_dev_or1_vpc
