@@ -1,0 +1,25 @@
+
+resource "aws_vpc" "aws_dev_or1_vpc" {
+  cidr_block = var.aws_dev_or1_cidr
+  enable_dns_support      = "true"
+  enable_dns_hostnames    = "true"
+  instance_tenancy        = "default"
+  tags = merge(
+    {
+      "Name" = "aws-dev-or1-vpc"
+    },
+    local.common_tags,
+  )
+}
+
+resource "aws_subnet" "aws_dev_or1_subnet1" {
+  vpc_id = aws_vpc.aws_dev_or1_vpc.id
+  availability_zone = "us-west-2b"
+  cidr_block = var.aws_dev_or1_subnet1
+  tags = merge(
+    {
+      "Name" = "aws-dev-or1-subnet1"
+    },
+    local.common_tags,
+  )
+}
